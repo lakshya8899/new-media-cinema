@@ -26,7 +26,7 @@ class DashboardSearch extends LitElement {
 
     searchResults: { type: Array },
 
-    selectedMovie: { type: Object },
+    selectedMedia: { type: Object },
 
     availableSeasons: { type: Array },
 
@@ -37,6 +37,12 @@ class DashboardSearch extends LitElement {
     errorMessage: { type: String },
 
     _originalTVData: { type: Object },
+
+    totalResults: { type: Number },
+
+    currentPage: { type: Number },
+
+    totalPages: { type: Number },
   };
 
   constructor() {
@@ -48,7 +54,7 @@ class DashboardSearch extends LitElement {
 
     this.searchResults = [];
 
-    this.selectedMovie = null;
+    this.selectedMedia = null;
 
     this.availableSeasons = [];
 
@@ -59,11 +65,17 @@ class DashboardSearch extends LitElement {
     this.lastSearchQuery = "";
 
     this.errorMessage = "";
+
+    this.totalResults = 0;
+
+    this.currentPage = 1;
+
+    this.totalPages = 0;
   }
 
   updated(changedProperties) {
     // Scroll to dashboard-information when a movie/series is selected
-    if (changedProperties.has("selectedMovie") && this.selectedMovie) {
+    if (changedProperties.has("selectedMedia") && this.selectedMedia) {
       setTimeout(() => {
         const dashboardInfo = this.shadowRoot?.querySelector(
           "dashboard-information",
@@ -231,6 +243,30 @@ class DashboardSearch extends LitElement {
       box-sizing: border-box;
       align-self: start;
     }
+
+    .load-more-button {
+      grid-column: 1 / -1;
+      background-color: transparent;
+      color: #2563eb;
+      border: 1px solid #2563eb;
+      border-radius: 12px;
+      padding: 12px 0;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .load-more-button:hover {
+      background-color: #2563eb;
+      color: white;
+    }
+
+    .no-results {
+      grid-column: 1 / -1;
+      font-size: 0.85rem;
+      color: #f59e0b;
+      font-weight: 600;
+      margin: -5px 0;
+    }
   `;
 
   // Handles switching between Movie and TV Series.
@@ -241,7 +277,7 @@ class DashboardSearch extends LitElement {
 
     this.searchResults = [];
 
-    this.selectedMovie = null;
+    this.selectedMedia = null;
 
     this.searchQuery = "";
   };
@@ -258,18 +294,20 @@ class DashboardSearch extends LitElement {
     }
 
     this.errorMessage = "";
-    this.selectedMovie = null;
+    this.selectedMedia = null;
     this.selectedResultId = "";
     this.searchResults = [];
     this.lastSearchQuery = this.searchQuery;
 
-    fetch(
-      `${TMDB_BASE_URL}/search/${this.mediaType}?query=${this.searchQuery}&language=en-US`,
+    this.fetchSearchPage(1);
+  };
 
+  fetchSearchPage = (page) => {
+    fetch(
+      `${TMDB_BASE_URL}/search/${this.mediaType}?query=${this.searchQuery}&language=en-US&page=${page}`,
       {
         headers: {
           accept: "application/json",
-
           Authorization: `Bearer ${TMDB_ACCESS_TOKEN}`,
         },
       },
@@ -278,18 +316,28 @@ class DashboardSearch extends LitElement {
         if (!response.ok) {
           throw new Error(`Search failed with status ${response.status}`);
         }
-
         return response.json();
       })
-
       .then((data) => {
-        this.selectedMovie = null;
-        this.selectedResultId = "";
-        this.searchResults = data.results;
+        const newResults = data.results || [];
+        if (page === 1) {
+          this.searchResults = newResults;
+        } else {
+          this.searchResults = [...this.searchResults, ...newResults];
+        }
+        this.currentPage = data.page;
+        this.totalPages = data.total_pages || 0;
+        this.totalResults = data.total_results || 0;
       })
       .catch((error) => {
         console.error("Search failed:", error);
       });
+  };
+
+  handleLoadMore = () => {
+    if (this.currentPage < this.totalPages) {
+      this.fetchSearchPage(this.currentPage + 1);
+    }
   };
 
   // Handles when the user selects a movie or TV show from the results dropdown.
@@ -311,7 +359,7 @@ class DashboardSearch extends LitElement {
 
   // Fetches full details for the selected movie using its TMDB movie ID.
   // Checks if the API response is valid, converts the response to JSON,
-  // stores the movie data in selectedMovie, then fetches extra keyword data.
+  // stores the movie data in selectedMedia, then fetches extra keyword data.
   // If the request fails, the error is logged in the console.
 
   fetchMovieDetails = (movieId) => {
@@ -339,7 +387,7 @@ class DashboardSearch extends LitElement {
       .then((data) => {
         this.availableSeasons = [];
 
-        this.selectedMovie = {
+        this.selectedMedia = {
           ...data,
 
           mediaType: "movie",
@@ -405,7 +453,7 @@ class DashboardSearch extends LitElement {
 
         this.availableSeasons = data.seasons || [];
 
-        this.selectedMovie = {
+        this.selectedMedia = {
           ...data,
 
           mediaType: "tv",
@@ -443,12 +491,12 @@ class DashboardSearch extends LitElement {
 
     if (seasonNumber === "default") {
       if (this._originalTVData) {
-        this.selectedMovie = { ...this._originalTVData };
+        this.selectedMedia = { ...this._originalTVData };
       }
       return;
     }
 
-    const tvId = this.selectedMovie.id;
+    const tvId = this.selectedMedia.id;
 
     fetch(
       `${TMDB_BASE_URL}/tv/${tvId}/season/${seasonNumber}?language=en-US&append_to_response=videos`,
@@ -473,8 +521,8 @@ class DashboardSearch extends LitElement {
       .then((seasonData) => {
         // Override with season-specific data
 
-        this.selectedMovie = {
-          ...this.selectedMovie,
+        this.selectedMedia = {
+          ...this.selectedMedia,
 
           overview: seasonData.overview,
 
@@ -493,7 +541,7 @@ class DashboardSearch extends LitElement {
   // Fetches keyword data for the selected movie or TV show.
   // TMDB uses different keyword response names for movies and TV shows,
   // so this function checks the media type, extracts the correct keyword array,
-  // stores it inside selectedMovie, then fetches the cast and crew credits.
+  // stores it inside selectedMedia, then fetches the cast and crew credits.
 
   fetchKeyword = (itemId) => {
     const endpoint = this.mediaType === "tv" ? "tv" : "movie";
@@ -526,8 +574,8 @@ class DashboardSearch extends LitElement {
           keywords = data.keywords;
         }
 
-        this.selectedMovie = {
-          ...this.selectedMovie,
+        this.selectedMedia = {
+          ...this.selectedMedia,
 
           keywords: keywords,
         };
@@ -541,7 +589,7 @@ class DashboardSearch extends LitElement {
 
   // Fetches cast and crew credits for the selected movie or TV show.
   // Uses the current media type to choose the correct TMDB endpoint,
-  // checks for API errors, stores cast and filtered crew data in selectedMovie,
+  // checks for API errors, stores cast and filtered crew data in selectedMedia,
   // then fetches the watch provider information.
 
   fetchCredits = (movieId) => {
@@ -565,8 +613,8 @@ class DashboardSearch extends LitElement {
       })
 
       .then((credits) => {
-        this.selectedMovie = {
-          ...this.selectedMovie,
+        this.selectedMedia = {
+          ...this.selectedMedia,
 
           cast: credits.cast || [],
 
@@ -583,7 +631,7 @@ class DashboardSearch extends LitElement {
   // Fetches watch provider data for the selected movie or TV show.
   // Uses the current media type to choose the correct TMDB endpoint,
   // checks for API errors, then stores the Australian streaming providers
-  // inside selectedMovie so the watch providers component can display them.
+  // inside selectedMedia so the watch providers component can display them.
 
   fetchWatchProviders = (movieId) => {
     const endpoint = this.mediaType === "tv" ? "tv" : "movie";
@@ -606,14 +654,14 @@ class DashboardSearch extends LitElement {
       })
 
       .then((data) => {
-        this.selectedMovie = {
-          ...this.selectedMovie,
+        this.selectedMedia = {
+          ...this.selectedMedia,
 
           watchProviders: data.results?.AU?.flatrate || [],
         };
 
         if (this.mediaType === "tv") {
-          this._originalTVData = { ...this.selectedMovie };
+          this._originalTVData = { ...this.selectedMedia };
         }
       })
       .catch((error) => {
@@ -691,7 +739,7 @@ class DashboardSearch extends LitElement {
 
           <option value="">
             ${this.searchResults.length > 0
-              ? `Select from ${this.searchResults.length} results for "${this.lastSearchQuery}"`
+              ? `Select from ${this.totalResults} results for "${this.lastSearchQuery}"`
               : `Select a ${this.mediaType === "tv" ? "TV series" : "movie"}`}
           </option>
           ${this.searchResults.map(
@@ -705,12 +753,27 @@ class DashboardSearch extends LitElement {
 
         ${this.searchResults.length > 0
           ? html`<span class="results-count"
-              >${this.searchResults.length} results found for
-              "${this.lastSearchQuery}" — select one above</span
+              >${this.totalResults} results found for "${this.lastSearchQuery}"
+              — showing ${this.searchResults.length}, select one above</span
             >`
+          : this.lastSearchQuery
+            ? html`<span class="no-results"
+                >No results found for "${this.lastSearchQuery}". Try a different
+                search.</span
+              >`
+            : ""}
+        ${this.searchResults.length > 0 && this.currentPage < this.totalPages
+          ? html`<button
+              type="button"
+              class="load-more-button"
+              @click=${this.handleLoadMore}
+            >
+              Load 20 more (${this.searchResults.length} of
+              ${this.totalResults})
+            </button>`
           : ""}
         ${this.mediaType === "tv" &&
-        this.selectedMovie &&
+        this.selectedMedia &&
         this.availableSeasons.length > 0
           ? html`
               <label class="search-label" for="season-select"
@@ -723,7 +786,7 @@ class DashboardSearch extends LitElement {
                 @change=${this.handleSeasonChange}
               >
                 <option value="default">
-                  ${this.selectedMovie.title + " - Default"}
+                  ${this.selectedMedia.title + " - Default"}
                 </option>
 
                 ${this.availableSeasons.map(
@@ -741,68 +804,68 @@ class DashboardSearch extends LitElement {
           : ""}
       </form>
 
-      ${!this.selectedMovie
+      ${!this.selectedMedia
         ? html`
             <div class="ad-widget-wrapper">
               <ad-widget></ad-widget>
             </div>
           `
         : ""}
-      ${this.selectedMovie
+      ${this.selectedMedia
         ? html`
             <dashboard-information
               class="dashboard-card"
-              .title=${this.selectedMovie.title}
-              .releaseYear=${this.selectedMovie.release_date?.split("-")[0]}
-              .runtime=${this.selectedMovie.runtime}
-              .rating=${this.selectedMovie.vote_average}
-              .director=${this.selectedMovie.director || "N/A"}
-              .budget=${this.selectedMovie.budget}
-              .revenue=${this.selectedMovie.revenue}
-              .profit=${typeof this.selectedMovie.revenue === "number" &&
-              typeof this.selectedMovie.budget === "number"
-                ? this.selectedMovie.revenue - this.selectedMovie.budget
+              .title=${this.selectedMedia.title}
+              .releaseYear=${this.selectedMedia.release_date?.split("-")[0]}
+              .runtime=${this.selectedMedia.runtime}
+              .rating=${this.selectedMedia.vote_average}
+              .director=${this.selectedMedia.director || "N/A"}
+              .budget=${this.selectedMedia.budget}
+              .revenue=${this.selectedMedia.revenue}
+              .profit=${typeof this.selectedMedia.revenue === "number" &&
+              typeof this.selectedMedia.budget === "number"
+                ? this.selectedMedia.revenue - this.selectedMedia.budget
                 : "Cannot be calculated"}
               .posterUrl=${"https://image.tmdb.org/t/p/w500" +
-              this.selectedMovie.poster_path}
-              .trailerUrl=${this.selectedMovie.trailerUrl}
+              this.selectedMedia.poster_path}
+              .trailerUrl=${this.selectedMedia.trailerUrl}
             ></dashboard-information>
           `
         : ""}
-      ${this.selectedMovie
+      ${this.selectedMedia
         ? html`
             <dashboard-overview
               class="dashboard-card"
-              .information=${this.selectedMovie.overview}
-              .genres=${this.selectedMovie.genres}
-              .keywords=${this.selectedMovie?.keywords}
+              .information=${this.selectedMedia.overview}
+              .genres=${this.selectedMedia.genres}
+              .keywords=${this.selectedMedia?.keywords}
             ></dashboard-overview>
           `
         : ""}
-      ${this.selectedMovie
+      ${this.selectedMedia
         ? html`
             <dashboard-cast-crew
               class="dashboard-card"
-              .cast=${this.selectedMovie?.cast ?? []}
-              .crew=${this.selectedMovie?.crew ?? []}
+              .cast=${this.selectedMedia?.cast ?? []}
+              .crew=${this.selectedMedia?.crew ?? []}
             ></dashboard-cast-crew>
           `
         : ""}
-      ${this.selectedMovie
+      ${this.selectedMedia
         ? html`
             <dashboard-watch-providers
               class="dashboard-card"
-              .providers=${this.selectedMovie?.watchProviders || []}
-              .spoken_languages=${this.selectedMovie.spoken_languages}
-              .production_countries=${this.selectedMovie.production_countries}
-              .production_companies=${this.selectedMovie.production_companies}
+              .providers=${this.selectedMedia?.watchProviders || []}
+              .spoken_languages=${this.selectedMedia.spoken_languages}
+              .production_countries=${this.selectedMedia.production_countries}
+              .production_companies=${this.selectedMedia.production_companies}
             ></dashboard-watch-providers>
           `
         : ""}
-      ${this.selectedMovie
+      ${this.selectedMedia
         ? html`
             <dashboard-trailer
-              .trailerUrl=${this.selectedMovie.trailerUrl}
+              .trailerUrl=${this.selectedMedia.trailerUrl}
             ></dashboard-trailer>
           `
         : ""}
