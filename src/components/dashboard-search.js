@@ -43,6 +43,8 @@ class DashboardSearch extends LitElement {
     currentPage: { type: Number },
 
     totalPages: { type: Number },
+
+    isLoading: { type: Boolean },
   };
 
   constructor() {
@@ -71,6 +73,8 @@ class DashboardSearch extends LitElement {
     this.currentPage = 1;
 
     this.totalPages = 0;
+
+    this.isLoading = false;
   }
 
   updated(changedProperties) {
@@ -303,6 +307,8 @@ class DashboardSearch extends LitElement {
   };
 
   fetchSearchPage = (page) => {
+    if (this.isLoading) return;
+    this.isLoading = true;
     fetch(
       `${TMDB_BASE_URL}/search/${this.mediaType}?query=${this.searchQuery}&language=en-US&page=${page}`,
       {
@@ -331,6 +337,9 @@ class DashboardSearch extends LitElement {
       })
       .catch((error) => {
         console.error("Search failed:", error);
+      })
+      .finally(() => {
+        this.isLoading = false;
       });
   };
 
@@ -756,12 +765,16 @@ class DashboardSearch extends LitElement {
               >${this.totalResults} results found for "${this.lastSearchQuery}"
               — showing ${this.searchResults.length}, select one above</span
             >`
-          : this.lastSearchQuery
-            ? html`<span class="no-results"
-                >No results found for "${this.lastSearchQuery}". Try a different
-                search.</span
+          : this.isLoading
+            ? html`<span class="results-count"
+                >Searching for "${this.lastSearchQuery}"...</span
               >`
-            : ""}
+            : this.lastSearchQuery
+              ? html`<span class="no-results"
+                  >No results found for "${this.lastSearchQuery}". Try a
+                  different search.</span
+                >`
+              : ""}
         ${this.searchResults.length > 0 && this.currentPage < this.totalPages
           ? html`<button
               type="button"
