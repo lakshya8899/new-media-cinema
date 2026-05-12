@@ -271,6 +271,11 @@ class DashboardSearch extends LitElement {
       font-weight: 600;
       margin: -5px 0;
     }
+
+    .load-more-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   `;
 
   // Handles switching between Movie and TV Series.
@@ -278,12 +283,17 @@ class DashboardSearch extends LitElement {
 
   handleMediaTypeChange = (event) => {
     this.mediaType = event.target.value;
-
     this.searchResults = [];
-
     this.selectedMedia = null;
-
     this.searchQuery = "";
+    this.totalResults = 0;
+    this.currentPage = 1;
+    this.totalPages = 0;
+    this.lastSearchQuery = "";
+    this.errorMessage = "";
+    this.selectedResultId = ""; 
+    this.availableSeasons = []; 
+    this._originalTVData = null; 
   };
 
   // Handles the search form submission.
@@ -291,6 +301,10 @@ class DashboardSearch extends LitElement {
   // checks for API errors, then stores the new results or logs an error if the search fails.
   handleSubmit = (event) => {
     event.preventDefault();
+
+    this.totalResults = 0;
+    this.currentPage = 1;
+    this.totalPages = 0;
 
     if (this.searchQuery.trim() === "") {
       this.errorMessage = "Please enter a search term.";
@@ -358,6 +372,8 @@ class DashboardSearch extends LitElement {
     this.selectedResultId = itemID;
 
     if (!itemID) return;
+
+    this.selectedMedia = null;
 
     if (this.mediaType === "tv") {
       this.fetchTVDetails(itemID);
@@ -742,14 +758,12 @@ class DashboardSearch extends LitElement {
           .value=${this.selectedResultId}
           @change=${this.handleDropdown}
         >
-          ${this.errorMessage
-            ? html`<p class="error-message">${this.errorMessage}</p>`
-            : ""}
-
           <option value="">
             ${this.searchResults.length > 0
               ? `Select from ${this.totalResults} results for "${this.lastSearchQuery}"`
-              : `Select a ${this.mediaType === "tv" ? "TV series" : "movie"}`}
+              : this.lastSearchQuery && !this.isLoading
+                ? `No matches for "${this.lastSearchQuery}"`
+                : `Select a ${this.mediaType === "tv" ? "TV series" : "movie"}`}
           </option>
           ${this.searchResults.map(
             (movie) =>
@@ -779,10 +793,12 @@ class DashboardSearch extends LitElement {
           ? html`<button
               type="button"
               class="load-more-button"
+              ?disabled=${this.isLoading}
               @click=${this.handleLoadMore}
             >
-              Load 20 more (${this.searchResults.length} of
-              ${this.totalResults})
+              ${this.isLoading
+                ? "Loading..."
+                : `Load 20 more (${this.searchResults.length} of ${this.totalResults})`}
             </button>`
           : ""}
         ${this.mediaType === "tv" &&
